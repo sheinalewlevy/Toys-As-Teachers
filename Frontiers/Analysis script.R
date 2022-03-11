@@ -13,12 +13,67 @@ library(ggpubr)
 library(bayesplot)
 library(tidyr)
 library(lme4)
+library(irr)
+library(rel)
 
 #################
 ###Import data###
 #################
 
 d<-read.csv("data_complete.csv") 
+c<-read.csv("inter-coder.csv")
+
+######################################
+##Calculate inter-coder reliability###
+######################################
+
+t<-merge(c,d,by=c("randomNumber","entryNumber","toolEntry"),all.x=TRUE)
+t[is.na(t)]<-"NA"
+
+##recode variables
+t$Scale.y_recode<-ifelse(t$Scale.y=="Mini","Miniature",ifelse(t$Scale.y=="ChildOnly","Child-only","Adult version"))
+
+t$Risk_recode<-ifelse(t$Risk=="Safe","safe","risky")
+
+t$simpleComp_recode<-ifelse(t$simpleComp=="Comp","Composite",ifelse(t$simpleComp=="Simple","Simple","NA"))
+
+t$play_M<-ifelse(t$Activity=="Play only","Play",ifelse(t$Activity=="Play & toy construction","Play",ifelse(t$Activity=="Play & instrumental","Play",ifelse(t$Activity=="NA","NA","Use"))))
+
+t$Multiple.Uses_M<-ifelse(t$Activity=="Play & toy construction","Multiple",ifelse(t$Activity=="Play & instrumental", "Multiple", ifelse(t$Activity=="NA", "NA","Single")))
+
+t$Toycon_M<-ifelse(t$Activity=="Toy construction", "Toycon",ifelse(t$Activity=="Play & toy construction","Toycon",ifelse(t$Activity=="NA","NA","Not Toycon")))
+
+##any play
+agree(cbind(t$Play, t$play_M)) ##81.6
+gac(cbind(t$Play, t$play_M)) ##0.84
+
+##multiple uses
+agree(cbind(t$Multiple.Uses, t$Multiple.Uses_M)) ##79.3
+gac(cbind(t$Multiple.Uses, t$Multiple.Uses_M)) ##0.79
+
+##toyconstruction
+agree(cbind(t$Toycon, t$Toycon_M)) ##83.9
+gac(cbind(t$Toycon, t$Toycon_M)) ##0.94
+
+##complexity
+agree(cbind(t$Complexity,t$simpleComp_recode)) ##80.5
+gac(cbind(t$Complexity,t$simpleComp_recode)) ##0.66
+
+##risk agreement
+agree(cbind(t$risk,t$Risk_recode)) ##92%
+gac(cbind(t$risk,t$Risk_recode))##0.84
+
+##context agreement
+agree(cbind(t$Sociality, t$Social)) ##69
+gac(cbind(t$Sociality, t$Social)) ##0.68
+
+##type agreement
+agree(cbind(t$Scale.x,t$Scale.y_recode)) ##93.1%
+gac(cbind(t$Scale.x,t$Scale.y_recode)) ##0.92
+
+
+rm(c)
+rm(t)
 
 ######################
 ###Recode variables###
@@ -39,6 +94,8 @@ d$age.recode<-relevel(d$age.recode,ref="Younger")
 d$Type.recode<-recode(d$Type,`Animal Figure`="Figures",`Human figure`="Figures",Instrument="Subsistence",`Tended facility`="Subsistence",`Untended facility`="Subsistence",Game="Games",PhysGame="Games")
 d$mult<-ifelse(d$Multiple.Uses=="Multiple",1,0)
 d$toycon<-ifelse(d$Toycon=="Toycon",1,0)
+d$play_cats<-ifelse(d$Play=="Play"&d$Multiple.Uses=="Single","Play Only",ifelse(d$Play=="Play"&d$Multiple.Uses=="Multiple","Multiple","Instrumental Only"))
+d$play_cats<-relevel(as.factor(d$play_cats), ref="Instrumental Only")
 
 #########################
 ###General descriptive###
@@ -67,6 +124,8 @@ prior3<-c(prior(normal(0,1),class=b), prior(exponential(1),class=sd))
 
 prior4<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
+prior5<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muMultiple"),prior(exponential(1),class=sd, dpar="muPlayOnly"))
+
 ## This function is courtesy of Bret Beheim
 psign <- function(samples, n_digits = 3) {
   if (all(samples == 0)) stop("all samples are zero!")
@@ -85,9 +144,8 @@ psign <- function(samples, n_digits = 3) {
 dp<-subset(d,play.recode==1)
 dt<-subset(d,Play_vs_use!="Play")
 
-E1<-brm(play.recode~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=bernoulli(), data = d, cores=4, iter=5000 ,prior=prior4,control=list(adapt_delta=0.99) )
+E1<-brm(play_cats~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=categorical(), data = d, cores=4, iter=5000 ,prior=prior5,control=list(adapt_delta=0.99) )
 
-E2<-brm(mult~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=bernoulli(), data = dp, cores=4, prior=prior4, iter=5000 ,control=list(adapt_delta=0.99) )
 
 E3<-brm(toycon~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=bernoulli(), data = dt, cores=4, prior=prior4, iter=5000 ,control=list(adapt_delta=0.99) )
 
@@ -160,11 +218,16 @@ table(is.na(d$scale.recode))
 
 ###########PLAY############################################
 post_E1<-posterior_samples(E1)
-post_E2<-posterior_samples(E2)
 post_E3<-posterior_samples(E3)
 
-round(median(inv_logit(post_E1$b_Intercept)),2)
-round(median(inv_logit(post_E2$b_Intercept)),2)
+
+post_E1<-post_E1%>%dplyr::select(b_muMultiple_Intercept, b_muPlayOnly_Intercept)
+post_E1$instrumental<-0
+post_E1<-as.data.frame(softmax(post_E1))
+round(median(post_E1$b_muPlayOnly_Intercept),2)
+round(median(post_E1$instrumental),2)
+round(median(post_E1$b_muMultiple_Intercept),2)
+
 round(median(inv_logit(post_E3$b_Intercept)),2)
 
 post1<-posterior_samples(M1)
@@ -217,6 +280,7 @@ post4$prob_Play<-inv_logit(post4$b_c_play.iv1)
 post4$prob_Instrument<-inv_logit(post4$b_c_play.iv0)
 post4$prob_activity_dif<-post4$prob_Play-post4$prob_Instrument
 round(median(post4$prob_activity_dif),2)
+round(PI(post4$prob_activity_dif),2)
 
 ######################LEARNING############################
 post_E7<-posterior_samples(E7)
@@ -347,7 +411,6 @@ summary(MS4,prob=0.89)
 ###Make Table of Intercepts###
 ##############################
 summary(E1,prob=0.89)
-summary(E2,prob=0.89)
 summary(E3,prob=0.89)
 summary(E4,prob=0.89)
 summary(E5,prob=0.89)
@@ -386,19 +449,21 @@ rm(world)
 ########################################
 ###Make Probability Percent Estimates###
 ########################################
-a<-c("Any Play (% Activity)","Multifunctional (% Any Play)","Toy Construction (% Any Instrumental)","Composite (% Complexity)", "Risky (% Associated Risk)","Social (% Context of Use)", "Adult Culture (% Learning Function)")
-b<-c(median(inv_logit(post_E1$b_Intercept))*100,median(inv_logit(post_E2$b_Intercept))*100,median(inv_logit(post_E3$b_Intercept))*100,median(inv_logit(post_E4$b_Intercept))*100,median(inv_logit(post_E5$b_Intercept))*100,median(inv_logit(post_E6$b_Intercept))*100,median(inv_logit(post_E7$b_Intercept))*100)
+a<-c("Play Only (% Activity)","Instrumental Only (% Activity)","Multifunctional (% Activity)","Toy Construction (% Any Instrumental)","Composite (% Complexity)", "Risky (% Associated Risk)","Social (% Context of Use)", "Adult Objects (% Type)")
+b<-c(median(post_E1$b_muPlayOnly_Intercept)*100,median(post_E1$instrumental)*100,median(post_E1$b_muMultiple_Intercept)*100,median(inv_logit(post_E3$b_Intercept))*100,median(inv_logit(post_E4$b_Intercept))*100,median(inv_logit(post_E5$b_Intercept))*100,median(inv_logit(post_E6$b_Intercept))*100,median(inv_logit(post_E7$b_Intercept))*100)
 
-c<-cbind(PI(inv_logit(post_E1$b_Intercept))*100,PI(inv_logit(post_E2$b_Intercept))*100,PI(inv_logit(post_E3$b_Intercept))*100,PI(inv_logit(post_E4$b_Intercept))*100,PI(inv_logit(post_E5$b_Intercept))*100,PI(inv_logit(post_E6$b_Intercept))*100,PI(inv_logit(post_E7$b_Intercept))*100)
+c<-cbind(PI(post_E1$b_muPlayOnly_Intercept)*100,PI(post_E1$instrumental)*100,PI(post_E1$b_muMultiple_Intercept)*100,PI(inv_logit(post_E3$b_Intercept))*100,PI(inv_logit(post_E4$b_Intercept))*100,PI(inv_logit(post_E5$b_Intercept))*100,PI(inv_logit(post_E6$b_Intercept))*100,PI(inv_logit(post_E7$b_Intercept))*100)
 
 f<-as.data.frame(t(rbind(a,b,c)))
 f$b<-as.numeric(f$b)
 f$`5%`<-as.numeric(f$`5%`)
 f$`94%`<-as.numeric(f$`94%`)
-f$a<-factor(f$a,levels=c("Adult Culture (% Learning Function)","Social (% Context of Use)","Risky (% Associated Risk)","Composite (% Complexity)","Toy Construction (% Any Instrumental)","Multifunctional (% Any Play)","Any Play (% Activity)"))
+f$a<-factor(f$a,levels=c("Adult Objects (% Type)","Social (% Context of Use)","Risky (% Associated Risk)","Composite (% Complexity)","Toy Construction (% Any Instrumental)","Multifunctional (% Activity)","Instrumental Only (% Activity)","Play Only (% Activity)"))
 
 
 P0<-ggplot(f, aes(x = a, y = b)) + geom_linerange(aes(x = a,  ymin = `5%`, ymax = `94%`), lwd = 1, colour = gray(1/2))+ geom_point(aes(x = a, y = b),size=3.5)   + scale_y_continuous(breaks=c(25,50,75))+ coord_flip() + theme_bw()+theme(axis.title.y=element_blank())+labs(y="(A) Percent of Objects")
+
+P0
 
 ##########################################
 ###Make Probability Distribution Figure###
@@ -432,5 +497,5 @@ P4
 P5<-mcmc_plot(M5,prob=0.89,prob_outer=0.89,pars="^b_",type="areas", rhat=c(1.1,1.1,1.1,1.2,1.2,1.2,1,1,1))
 P5<-P5+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="6 Years and Under","b_a_age.recodeOlder"="7 Years and Over","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity"),
                         limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger"))
-P5<-P5+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2),labels=c("-2","0","2"))+labs(y="Learning Function",x="Child vs Adult Culture")+ theme_bw()+legend_none()
+P5<-P5+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2),labels=c("-2","0","2"))+labs(y="Type",x="Child Only vs Adult")+ theme_bw()+legend_none()
 P5
