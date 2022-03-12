@@ -16,12 +16,16 @@ library(lme4)
 library(irr)
 library(rel)
 
+# "rel" package has been archieved, need to manually specify
+# install.packages("https://cran.r-project.org/src/contrib/Archive/rel/rel_1.4.2.tar.gz", repos = NULL, type = "source")
+
 #################
 ###Import data###
 #################
 
-d<-read.csv("data_complete.csv") 
-c<-read.csv("inter-coder.csv")
+d<-read.csv("Frontiers/data_complete.csv") 
+c<-read.csv("Frontiers/inter-coder.csv")
+names(c)[1] <- "randomNumber"
 
 ######################################
 ##Calculate inter-coder reliability###
