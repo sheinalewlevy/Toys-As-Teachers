@@ -18,6 +18,8 @@ library(httr)
 library(rnaturalearth)
 library(sf)
 library(rnaturalearthdata)
+library(brms)
+library(rethinking)
 
 
 ###############################
@@ -25,7 +27,9 @@ library(rnaturalearthdata)
 ###############################
 
 ##import the dataset
-d<-read_excel("data_pub.xlsx",na="NA")
+d<-read.csv("data_pub.csv")
+
+d$ref<-coerce_index(d$Reference)
 
 ##Look at child age names
 unique(d$childAge_coded)
@@ -34,8 +38,12 @@ unique(d$childAge_coded)
 d$Age<-ifelse(d$childAge_coded=="ADOLESCENCE"|d$childAge_coded=="MIDDLE CHILDHOOD"|d$childAge_coded=="OLD","OLD","YOUNG")
 
 d$Age<-recode(d$Age, YOUNG="Approx. ≤6 years", OLD="Approx. ≥7 years")
+d$Age[is.na(d$Age)]<-"Unknown"
 
 d$Gender<-recode(d$Gender, GIRLS="Girls", BOYS="Boys",BOTH="Both")
+d$Gender[is.na(d$Gender)]<-"Unknown"
+
+d$Continent<-recode(d$Continent, `Southern South America` = "South America")
 
 d$Society<-as.factor(d$Society)
 
@@ -49,13 +57,27 @@ nrow(d) ##434 objects
 length(unique(d$Society)) ##54
 
 ##tally the number of tools per culture, and generate descriptive stats
-total<-d%>%group_by(Society) %>%tally()
+d$count<-1
+total<-d%>%group_by(Society, Continent) %>% summarise(subsistence=unique(Subsistence), n_pubs=length(unique(Reference)), min_date=min(Date), max_date=max(Date),n=sum(count))
+total$percent<-round(total$n/sum(total$n),4)*100
 round(mean(total$n),2) ##8.04
 round(sd(total$n),2) ##8.07
 range(total$n) ##1-38
 
+##write.csv(total, "TableS1.csv")
+
+length(unique(d$Reference)) ##124 references
+round(mean(total$n_pubs),2) ##2.3
+round(sd(total$n_pubs),2) ##1.78
+range(total$n_pubs) ##1-9
+
+range(d$Date) ##1854-2019
+
 ##Regions
 round(table(d$Continent)/nrow(d),2)*100 ##60% of objects come from North America
+
+round(table(total$Continent)/nrow(total),2)*100 ##52% of societies come from north america
+
 
 rm(total)
 
@@ -68,159 +90,180 @@ colnames(societies)[1] <- "Society"
 
 societies<-merge(societies,points,by="Society")
 points <- st_as_sf(societies, coords = c("Longitude", "Latitude"), remove = FALSE, 
-                     crs = 4326, agr = "constant")
+                   crs = 4326, agr = "constant")
 theme_set(theme_bw())
 world <- ne_countries(scale = "medium", returnclass = "sf")
 ggplot(data = world) +
   geom_sf()+
-  geom_sf(data=points,color="black",fill="red",pch=21,size=2)
+  geom_sf(data=points,color="black",fill="white",pch=21,size=2.5)
 
 rm(societies)
 rm(points)
 rm(world)
 
-##########################################
-###Sex differences in number of objects###
-##########################################
+############
+###Gender###
+############
 
-##Calculate how many objects have the sex of the user reported
-s<-d%>%group_by(Society,Gender)%>%tally()%>%na.omit() 
+d$Gender<-relevel(as.factor(d$Gender), ref="Unknown")
 
-sum(s$n) ##302 objects had information on the gender of the user
-round(sum(s$n)/nrow(d),2)*100 #for 70% of objects
-length(unique(s$Society)) ##from 54 societies
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muGirls"),prior(exponential(1),class=sd, dpar="muBoys"), prior(exponential(1),class=sd, dpar="muBoth"))
 
-##Spread dataset
-spread_s<-spread(s,Gender,n,fill=0)
-sum(spread_s$Girls)##93 objects used exclusively by girls
-round(sum(spread_s$Girls)/sum(s$n),2)*100 ##31%
-sum(spread_s$Boys)##171 objects used exclusively by boys
-round(sum(spread_s$Boys)/sum(s$n),2)*100 ##57%
-sum(spread_s$Both)##38 objects used by both
-round(sum(spread_s$Both)/sum(s$n),2)*100 ##13%
+M1<-brm(Gender~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
-##Look at the number of societies for each ratio
-spread_s$ratio_mf<-spread_s$Girls/spread_s$Boys
-sum(spread_s$ratio_mf>1) ##6
-sum(spread_s$ratio_mf==1) ##9
-sum(spread_s$ratio_mf<1) ##39
+post1<-posterior_samples(M1)
 
-##Reorder Culture by the ratio
-s$Society<-factor(s$Society,levels=spread_s$Society[order(spread_s$ratio_mf)], ordered=TRUE)
-s$Gender<-factor(s$Gender,levels=c("Girls","Boys","Both"))
+post1<-post1%>% dplyr::select(starts_with("b_mu"))
+post1$uknown<-0
 
-##Make figure 2 TOP
-plot1<-ggplot(s, aes(x=Society, y=n, fill=Gender)) + geom_bar(stat="identity",position=position_dodge(preserve = "single"),width=0.7)+scale_fill_manual(values=c("#000000", "#E69F00", "#56B4E9"))+geom_vline(xintercept = "Canela",linetype="dashed")+geom_vline(xintercept = "Warao",linetype="dashed")+annotate(x="Aleut",y=+Inf,label="Boys>Girls",vjust=2,geom="label")+annotate(x="Nuxalk",y=+Inf,label="Girls=Boys",vjust=2,geom="label")+annotate(x="Klamath",y=+Inf,label="Girls>Boys",vjust=2,geom="label")
-plot1<-plot1+ylab("Number of Objects (n=302)")+xlab("Society (n=54)")
-plot1<-plot1+theme_classic()
-plot1<-plot1+theme(axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1))
-plot1
-rm(s)
-rm(spread_s)
+post1<-as.data.frame(softmax(post1))
 
-##########################################
-###Age differences in number of objects###
-##########################################
+round(mean(post1$b_muBoys_Intercept),2)*100
+round(mean(post1$b_muGirls_Intercept),2)*100
+round(mean(post1$b_muBoth_Intercept),2)*100
+round(mean(post1$uknown),2)*100
 
-##Make dataframe from objects by Age
-a<-d%>%group_by(Society,Age)%>%tally()%>%na.omit()
+fig3a_mean<-c(mean(post1$b_muBoys_Intercept)*100,
+                  mean(post1$b_muGirls_Intercept)*100,
+                  mean(post1$b_muBoth_Intercept)*100,
+                  mean(post1$uknown)*100)
 
-##How many objects have age data?
-sum(a$n) ##65
-round(sum(a$n)/nrow(d),2)*100 ##15%
+fig3a_PI<-cbind(PI(post1$b_muBoys_Intercept)*100,
+                PI(post1$b_muGirls_Intercept)*100,
+                PI(post1$b_muBoth_Intercept)*100,
+                PI(post1$uknown)*100)
 
-##How many societies have age info?
-length(unique(a$Society)) ##25
+fig3a_title<-c("Boys","Girls","Both Boys\n & Girls","Gender\n Unknown")
 
-##Make spread
-spread_a<-spread(a,Age,n,fill=0)
+fig3a_data<-as.data.frame(t(rbind(fig3a_title,fig3a_mean,fig3a_PI)))
 
-##How many objects are for older and younger children?
-sum(spread_a$`Approx. ≤6 years`) ##37 for younger
-round(sum(spread_a$`Approx. ≤6 years`)/sum(a$n),2)*100 ##57% for younger
-sum(spread_a$`Approx. ≥7 years`) ##28 for older
-round(sum(spread_a$`Approx. ≥7 years`)/sum(a$n),2)*100 ##43% for older
+fig3a_data$fig3a_title<-factor(fig3a_data$fig3a_title,levels=c("Gender\n Unknown","Both Boys\n & Girls","Girls","Boys"))
+fig3a_data$fig3a_mean<-as.numeric(fig3a_data$fig3a_mean)
+fig3a_data$`5%`<-as.numeric(fig3a_data$`5%`)
+fig3a_data$`94%`<-as.numeric(fig3a_data$`94%`)
+                              
+fig3a<-ggplot(fig3a_data, aes(x = fig3a_title, y = fig3a_mean)) + geom_linerange(aes(x = fig3a_title,  ymin = `5%`, ymax = `94%`), lwd = 1, colour = gray(1/2))+ geom_point(aes(x = fig3a_title, y = fig3a_mean),size=3.5)   + scale_y_continuous(limits=c(0,100),breaks=c(0,25,50,75,100),labels=c("0%","25%","50%","75%","100%"))+coord_flip() + theme_bw(base_size=18)+theme(axis.title.y=element_blank())+labs(y="(A) User Gender")
 
-##Look at the number of societies for each proportion
-spread_a$ratio<-spread_a$`Approx. ≤6 years`/spread_a$`Approx. ≥7 years`
-sum(spread_a$ratio>1) ##14
-sum(spread_a$ratio==1) ##1
-sum(spread_a$ratio<1) ##10
+fig3a
 
-##Reorder and rename variables for the figure
-a$Society<-factor(a$Society,levels=spread_a$Society[order(-spread_a$ratio)], ordered=TRUE)
+#########
+###Age###
+#########
 
-##Make figure 2 BOTTOM
-plot2<-ggplot(a,aes(x=Society,y=n,fill=Age))+ geom_bar(stat="identity",position=position_dodge(preserve = "single"),width=0.7)+ scale_fill_manual(values=c("#B4B4B4FF","#0062B4FF"))+geom_vline(xintercept = "Tlingit",linetype="dashed")+annotate(x="San",y=+Inf,label="Younger>Older",vjust=2,geom="label")+annotate(x="Kaska",y=+Inf,label="Older>Younger",vjust=2,geom="label")
-plot2<-plot2+ylab("Number of Objects (n=65)")+xlab("Society (n=25)")
-plot2<-plot2+theme_classic()
-plot2<-plot2+theme(axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1))
-plot2
+d$Age<-relevel(as.factor(d$Age), ref="Unknown")
 
-##Put the figures together
-fig2<-ggarrange(plot1, plot2, nrow=2,ncol=1)
-fig2
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muApprox7years"),prior(exponential(1),class=sd, dpar="muApprox6years"))
 
-rm(a)
-rm(spread_a)
+M2<-brm(Age~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
-##################
-###Object Types###
-##################
+post2<-posterior_samples(M2)
+
+post2<-post2%>% dplyr::select(starts_with("b_mu"))
+post2$uknown<-0
+
+post2<-as.data.frame(softmax(post2))
+
+round(mean(post2$b_muApprox6years_Intercept),2)*100
+round(mean(post2$b_muApprox7years_Intercept),2)*100
+round(mean(post2$uknown),2)*100
+
+fig3b_mean<-c(mean(post2$b_muApprox6years_Intercept)*100,
+              mean(post2$b_muApprox7years_Intercept)*100,
+              mean(post2$uknown)*100)
+
+fig3b_PI<-cbind(PI(post2$b_muApprox6years_Intercept)*100,
+            PI(post2$b_muApprox7years_Intercept)*100,
+            PI(post2$uknown)*100)
+
+fig3b_title<-c("Infancy\n & Early Childhood","Middle Childhood\n & Adolescence","Age Unknown")
+
+fig3b_data<-as.data.frame(t(rbind(fig3b_title,fig3b_mean,fig3b_PI)))
+
+fig3b_data$fig3b_title<-factor(fig3b_data$fig3b_title,levels=c("Age Unknown","Middle Childhood\n & Adolescence","Infancy\n & Early Childhood"))
+fig3b_data$fig3b_mean<-as.numeric(fig3b_data$fig3b_mean)
+fig3b_data$`5%`<-as.numeric(fig3b_data$`5%`)
+fig3b_data$`94%`<-as.numeric(fig3b_data$`94%`)
+
+fig3b<-ggplot(fig3b_data, aes(x = fig3b_title, y = fig3b_mean)) + geom_linerange(aes(x = fig3b_title,  ymin = `5%`, ymax = `94%`), lwd = 1, colour = gray(1/2))+ geom_point(aes(x = fig3b_title, y = fig3b_mean),size=3.5)   + scale_y_continuous(limits=c(0,100),breaks=c(0,25,50,75,100),labels=c("0%","25%","50%","75%","100%"))+coord_flip() + theme_bw(base_size=18)+theme(axis.title.y=element_blank())+labs(y="(B) User Age Category")
+
+fig3b
+
+################################################
+###Frequency and percent for each object type###
+################################################
+table(d$Type_recode)
+
+table(d$Type_recode,d$Gender)
+
+###################
+###Make Table 3####
+###################
 ##Recode types so that we have enough in each category
 d$Type_recode<-recode(d$Type,`Animal Figure`="Figures",`Human figure`="Figures",Instrument="Subsistence",`Tended facility`="Subsistence",`Untended facility`="Subsistence",Game="Games",PhysGame="Games")
 
-###Frequency and percent for each object type
-table(d$Type_recode)
 t3a<-as.data.frame(table(d$Type_recode))
-round(table(d$Type_recode)/nrow(d),2)*100
 
 ##Frequency by sex
-table(d$Type_recode, d$Gender)
 t3b<-as.data.frame.matrix(table(d$Type_recode, d$Gender))
 
 ##Frequency and percent for each scale type
-table(d$Scale)
-round(table(d$Scale)/nrow(d),2)*100
-table(d$Type_recode,d$Scale)
 t3c<-as.data.frame.matrix(table(d$Type_recode,d$Scale))
 
-sc<-d%>%group_by(Society,Scale)%>%tally()%>%na.omit()
-spread_sc<-spread(sc,Scale,n,fill=0)
+t3d<-as.data.frame.matrix(table(d$Type_recode,d$PresLikelihood))
 
-spread_sc$ratio_mc<-spread_sc$Mini/spread_sc$ChildOnly
-sum(spread_sc$ratio_mc>1,na.rm=T) ##30
-sum(spread_sc$ratio_mc==1,na.rm=T) ##8
-sum(spread_sc$ratio_mc<1,na.rm=T) ##15
+t3e<-as.data.frame.matrix(table(d$Type_recode,d$simpleComp))
 
-sum(spread_sc$AdultVersion==0) ##34 societies have no adult version reported
+t3f<-as.data.frame.matrix(table(d$Type_recode,d$Play))
 
-##Rename columns for aesthtic reasons
-sc$Scale<-recode(sc$Scale, Mini="Miniature", AdultVersion="Adult Version",ChildOnly="Child Only")
+table3<-bind_cols(t3a,t3b, t3f,t3c,t3d, t3e)
+##write.csv(table3,"table3.csv")
 
-##Reorder Culture by the ratio
-sc$Society<-factor(sc$Society,levels=spread_sc$Society[order(spread_sc$ratio_mc)], ordered=TRUE)
+##########
+###Play###
+##########
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
-##Make figure 3
-plot3<-ggplot(sc, aes(x=Society, y=n, fill=Scale)) + geom_bar(stat="identity",position=position_dodge(preserve = "single"),width=0.7)+scale_fill_manual(values=c("#000000", "#E69F00", "#56B4E9"))+geom_vline(xintercept = "Aranda",linetype="dashed")+annotate(x="Nuxalk",y=+Inf,label="Child Only>Miniature",vjust=2,geom="label")+geom_vline(xintercept = "Yuki",linetype="dashed")+annotate(x="Kaska",y=+Inf,label="Child Only=Miniature",vjust=2,geom="label")+annotate(x="Canela",y=+Inf,label="Miniature>Child Only",vjust=2,geom="label")
-plot3<-plot3+ylab("Number of Objects (n=434)")+xlab("Society (n=54)")
-plot3<-plot3+theme_classic()
-plot3<-plot3+theme(axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1))
-plot3
+d_play<-subset(d,!is.na(Play))
 
-rm(sc)
-rm(spread_sc)
+nrow(d_play) ##416 objects 
+length(unique(d_play$Society)) ##53 societies
 
-###############
-###Materials###
-###############
-##How many objects have material descriptions?
-sum(d$materialDescribed=="YES") ##202
-round((sum(d$materialDescribed=="YES")/nrow(d))*100,0) ##47
+M3<-brm(Play~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_play, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+
+post3<-posterior_samples(M3)
+
+round(mean(1-inv_logit(post3$b_Intercept)),2)*100
+
+###########
+###Scale###
+###########
+
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muChildOnly"),prior(exponential(1),class=sd, dpar="muMini"))
+
+M4<-brm(Scale~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+
+post4<-posterior_samples(M4)
+
+post4<-post4%>% dplyr::select(starts_with("b_mu"))
+post4$AdultVersion<-0
+
+post4<-as.data.frame(softmax(post4))
+
+round(mean(post4$b_muMini_Intercept),2)*100
+round(mean(post4$b_muChildOnly_Intercept),2)*100
+round(mean(post4$AdultVersion),2)*100
+
+###################
+###Raw materials###
+###################
+
+d_pres<-subset(d, !is.na(PresLikelihood))
+
+nrow(d_pres) ##202
+length(unique(d_pres$Society)) ##46
 
 ##Make dataframe of materials
-m<-subset(d,materialDescribed=="YES")
-m<-m%>%select(toolName,materialMetal,materialPlant,materialStone,materialBone,materialAntler,materialOther)
+m<-d_pres%>%select(toolName,materialMetal,materialPlant,materialStone,materialBone,materialAntler,materialOther)
 
 ##Recode yes into 1 and no into 0
 m <- m %>%
@@ -237,150 +280,155 @@ cm<-as.data.frame(colSums(m[,-1]))
 colnames(cm)[1] <- "value"
 cm$Names<-c("Metal","Plant","Stone","Bone","Antler","Other")
 cm<-subset(cm,Names!="Antler")
+
 cm$Percent<-paste(cm$Names,paste(round(cm$value/sum(cm$value)*100),"%",sep=""))
-pie(cm$value,labels=cm$Percent,col=rainbow(length(cm$Percent)))
+pie(cm$value,labels=cm$Percent,col=grey.colors(length(cm$Percent)))
 
-rm(m)
-rm(cm)
-rm(sum_m)
+##################
+###Preservation###
+##################
 
-m<-subset(d,materialDescribed=="YES")
-table(m$PresLikelihood) ##178 objects unlikely to preserve
-round((table(m$PresLikelihood)/nrow(m))*100,0) ##88%
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
-table(m$PresLikelihood,m$Type_recode) ##No category was much more likely to preserve
-t3d<-as.data.frame.matrix(table(m$Type_recode,m$PresLikelihood))
-rm(m)
+M5<-brm(PresLikelihood~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_pres, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+
+post5<-posterior_samples(M5)
+
+mean(inv_logit(post5$b_Intercept))
+
+################
+###Complexity###
+################
+d_comp<-subset(d, !is.na(simpleComp))
+
+nrow(d_comp) ##330
+length(unique(d_comp$Society)) ##all 54
+
+M6<-brm(simpleComp~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_comp, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+
+post6<-posterior_samples(M6)
+round(mean(1-inv_logit(post6$b_Intercept)),2)*100
+
+
+######################
+###Manufacturer Age###
+######################
+
+d_man_age<-subset(d, !is.na(manufacturerAge))
+
+nrow(d_man_age) ##99
+length(unique(d_man_age$Society)) ##32
+
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muCHILD"),prior(exponential(1),class=sd, dpar="muBOTH"))
+
+M7<-brm(manufacturerAge~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(), prior=prior, data = d_man_age, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+
+post7<-posterior_samples(M7)
+
+post7<-post7%>% dplyr::select(starts_with("b_mu"))
+post7$Adult<-0
+
+post7<-as.data.frame(softmax(post7))
+
+round(mean(post7$b_muCHILD_Intercept),2)*100
+round(mean(post7$b_muBOTH_Intercept),2)*100
+round(mean(post7$Adult),2)*100
+
+fig3d_mean<-c(mean(post7$b_muCHILD_Intercept)*100,
+              mean(post7$b_muBOTH_Intercept)*100,
+              mean(post7$Adult)*100)
+              
+fig3d_PI<-cbind(PI(post7$b_muCHILD_Intercept)*100,
+              PI(post7$b_muBOTH_Intercept)*100,
+              PI(post7$Adult)*100)    
+
+fig3d_title<-c("Child","Both Child\n & Adult","Adult")
+
+fig3d_data<-as.data.frame(t(rbind(fig3d_title,fig3d_mean,fig3d_PI)))
+
+fig3d_data$fig3d_title<-factor(fig3d_data$fig3d_title,levels=c("Both Child\n & Adult","Adult","Child"))
+fig3d_data$fig3d_mean<-as.numeric(fig3d_data$fig3d_mean)
+fig3d_data$`5%`<-as.numeric(fig3d_data$`5%`)
+fig3d_data$`94%`<-as.numeric(fig3d_data$`94%`)
+
+fig3d<-ggplot(fig3d_data, aes(x = fig3d_title, y = fig3d_mean)) + geom_linerange(aes(x = fig3d_title,  ymin = `5%`, ymax = `94%`), lwd = 1, colour = gray(1/2))+ geom_point(aes(x = fig3d_title, y = fig3d_mean),size=3.5)   + scale_y_continuous(limits=c(0,100),breaks=c(0,25,50,75,100),labels=c("0%","25%","50%","75%","100%"))+coord_flip() + theme_bw(base_size=18)+theme(axis.title.y=element_blank())+labs(y="(D) Manufacturer Age Category")
+
+fig3d
+
+#########################
+###Manufacturer Gender###
+#########################
+
+d_man_gen<-subset(d, !is.na(manufacturerSex))
+nrow(d_man_gen) ##98
+length(unique(d_man_gen$Society)) ##32
+
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muFEMALE"),prior(exponential(1),class=sd, dpar="muMALE"))
+
+M8<-brm(manufacturerSex~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(), prior=prior, data = d_man_gen, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+
+post8<-posterior_samples(M8)
+
+post8<-post8%>% dplyr::select(starts_with("b_mu"))
+post8$both<-0
+
+post8<-as.data.frame(softmax(post8))
+
+round(mean(post8$b_muFEMALE_Intercept),2)*100
+round(mean(post8$b_muMALE_Intercept),2)*100
+round(mean(post8$both),2)*100
 
 #################
-###Composition###
+###Same Gender###
 #################
-sum(!is.na(d$simpleComp)) ##330 objects had data on composition
-round(sum(!is.na(d$simpleComp))/nrow(d),2)*100 ##76% of all objects
 
-cs<-d%>%group_by(Society,simpleComp)%>%tally()%>%na.omit()
-length(unique(cs$Society)) ##54 societies
-
-table(d$simpleComp) ##206 comp
-round(table(d$simpleComp)/sum(!is.na(d$simpleComp)),2)*100 ##62%
-table(d$Type_recode,d$simpleComp)
-t3e<-as.data.frame.matrix(table(d$Type_recode,d$simpleComp))
-
-spread_cs<-spread(cs,simpleComp,n,fill=0)
-
-spread_cs$ratio_cs<-spread_cs$Simple/spread_cs$Comp
-sum(spread_cs$ratio_cs>1,na.rm=T) ##10
-sum(spread_cs$ratio_cs==1,na.rm=T) ##9
-sum(spread_cs$ratio_cs<1,na.rm=T) ##35
-
-##Reorder Culture by the ratio
-cs$Society<-factor(cs$Society,levels=spread_cs$Society[order(spread_cs$ratio_cs)], ordered=TRUE)
-cs$simpleComp<-ordered(cs$simpleComp,levels=c("Simple","Comp"))
-cs$simpleComp<-recode(cs$simpleComp,Comp="Composite")
-cs<-cs%>%rename(Complexity=simpleComp)
-
-##Make figure 5
-plot5<-ggplot(cs, aes(x=Society, y=n, fill=Complexity)) + geom_bar(stat="identity",position=position_dodge(preserve = "single"),width=0.7)+scale_fill_manual(values=c("#B4B4B4FF","#0062B4FF"))+geom_vline(xintercept = "Barama River Carib",linetype="dashed")+annotate(x="Crow",y=+Inf,label="Composite>Simple",vjust=2,geom="label")+geom_vline(xintercept = "Ticuna",linetype="dashed")+annotate(x="Manus",y=+Inf,label="Composite=Simple",vjust=2,geom="label")+annotate(x="Kiribati",y=+Inf,label="Simple>Composite",vjust=2,geom="label")
-plot5<-plot5+ylab("Number of Objects (n=330)")+xlab("Society (n=54)")
-plot5<-plot5+theme_classic()
-plot5<-plot5+theme(axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1))
-plot5
-
-rm(cs)
-rm(spread_cs)
-
-###################
-###Manufacturers###
-###################
-##Number of objects with info on tool manufacturer
-sum(table(d$manufacturerAge))
-round((sum(table(d$manufacturerAge))/nrow(d))*100,0)
-
-##Make dataset 
-om<-subset(d,!is.na(d$manufacturerAge))
-nrow(om)
-length(unique(om$Society)) ##32 societies
-
-##Recode
-om$manufacturerSex[is.na(om$manufacturerSex)]<-"Unknown"
-om$manufacturerAge<-recode(om$manufacturerAge,CHILD="Child",ADULT="Adult",BOTH="Both")
-om$manufacturerSex<-recode(om$manufacturerSex,MALE="Male",FEMALE="Female",BOTH="Both")
-om$manufacturerKin[is.na(om$manufacturerKin)]<-"Unknown"
-om$Gender[is.na(om$Gender)]<-"Unknown"
-
-##Objects manufacturer info
-table(om$manufacturerAge)
-round((table(om$manufacturerAge)/sum(table(om$manufacturerAge)))*100)
-
-table(om$manufacturerSex)
-round((table(om$manufacturerSex)/sum(table(om$manufacturerSex)))*100)
-
-##Calculate sex match
-omg<-subset(om,Gender!="Unknown")
+omg<-subset(d_man_gen,Gender!="Unknown")
 omg<-subset(omg,manufacturerSex!="Unknown")
+
 nrow(omg) ##79 objects
 length(unique(omg$Society)) ##30 societies
-omg$sexmatch<-ifelse(omg$Gender=="Boys"&omg$manufacturerSex=="Male","Same Gender",ifelse(omg$Gender=="Girls"&omg$manufacturerSex=="Female","Same Gender",ifelse(omg$Gender=="BOTH"&omg$manufacturerSex=="Both","Same Gender","Opposite Gender")))
 
-table(omg$sexmatch)
-round((table(omg$sexmatch)/sum(table(omg$sexmatch)))*100)
+omg$sexmatch<-ifelse(omg$Gender=="Boys"&omg$manufacturerSex=="MALE","Same Gender",ifelse(omg$Gender=="Girls"&omg$manufacturerSex=="FEMALE","Same Gender",ifelse(omg$Gender=="Both"&omg$manufacturerSex=="BOTH","Same Gender","Opposite Gender")))
 
-##Make datasets for figure
-OM1<-om%>%group_by(Society,manufacturerAge)%>%tally()%>%na.omit()
-OM2<-om%>%group_by(Society,manufacturerSex)%>%tally()%>%na.omit()
+prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
-spread_OM1<-spread(OM1,manufacturerAge,n,fill=0)
-spread_OM2<-spread(OM2,manufacturerSex,n,fill=0)
+M9<-brm(sexmatch~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = omg, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
-##Calculate ratios for child vs. adult manufacturers
-spread_OM1$ratio<-spread_OM1$Child/spread_OM1$Adult
-spread_OM1$ratio[is.na(spread_OM1$ratio)]<-1
-sum(spread_OM1$ratio>1,na.rm=T) ##18
-sum(spread_OM1$ratio==1,na.rm=T) ##6
-sum(spread_OM1$ratio<1,na.rm=T) ##8
+post9<-posterior_samples(M9)
 
-##Calculate ratios for f vs. m manufacturers
-spread_OM2$ratio<-spread_OM2$Female/spread_OM2$Male
-spread_OM2$ratio[is.na(spread_OM2$ratio)]<-1
-sum(spread_OM2$ratio>1,na.rm=T) ##11
-sum(spread_OM2$ratio==1,na.rm=T) ##8
-sum(spread_OM2$ratio<1,na.rm=T) ##13
-
-##Make Figure
-OM1$Society<-factor(OM1$Society,levels=spread_OM1$Society[order(spread_OM1$ratio)], ordered=TRUE)
-OM1$`Manufacturer Age`<-factor(OM1$manufacturerAge,levels=c("Adult","Child","Both"))
-
-plot6<-ggplot(OM1,aes(x=Society,y=n,fill=`Manufacturer Age`))+ geom_bar(stat="identity",position=position_dodge(preserve = "single"),width=0.7)+ scale_fill_manual(values=c("red","blue","green","purple"))+geom_vline(xintercept = "Bororo",linetype="dashed")+annotate(x="Nivkh",y=+Inf,label="Adult>Child",vjust=2,geom="label")+geom_vline(xintercept = "Yuki",linetype="dashed")+annotate(x="Manus",y=+Inf,label="Adult=Child",vjust=2,geom="label")+annotate(x="Hadza",y=+Inf,label="Child>Adult",vjust=2,geom="label")
-plot6<-plot6+ylab("Number of Objects (n=99)")+xlab("Society (n=32)") 
-plot6<-plot6+theme_classic()
-plot6<-plot6+theme(axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1))
-plot6
+round(mean(inv_logit(post9$b_Intercept)),2)*100
 
 
-OM2$Society<-factor(OM2$Society,levels=spread_OM2$Society[order(spread_OM2$ratio)], ordered=TRUE)
-OM2$`Manufacturer Sex`<-factor(OM2$manufacturerSex,levels=c("Male","Female","Both","Unknown"))
-OM2<-subset(OM2,`Manufacturer Sex`!="Unknown")
-sum(OM2$n)
+fig3e_mean<-c(mean(post8$b_muFEMALE_Intercept)*100,
+              mean(post8$b_muMALE_Intercept)*100,
+             mean(post8$both)*100,
+             mean(inv_logit(post9$b_Intercept))*100)
 
-plot7<-ggplot(OM2,aes(x=Society,y=n,fill=`Manufacturer Sex`))+ geom_bar(stat="identity",position=position_dodge(preserve = "single"),width=0.7)+ scale_fill_manual(values=c("red","blue","green","purple"))+geom_vline(xintercept = "Aranda",linetype="dashed")+annotate(x="Mataco",y=+Inf,label="Male>Female",vjust=2,geom="label")+geom_vline(xintercept = "Vedda",linetype="dashed")+annotate(x="Kaska",y=+Inf,label="Male=Female",vjust=2,geom="label")+annotate(x="Canela",y=+Inf,label="Female>Male",vjust=2,geom="label")
-plot7<-plot7+ylab("Number of Objects (n=98)")+xlab("Society (n=32)") 
-plot7<-plot7+theme_classic()
-plot7<-plot7+theme(axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1))
-plot7
+fig3e_PI<-cbind(PI(post8$b_muFEMALE_Intercept)*100,
+              PI(post8$b_muMALE_Intercept)*100,
+              PI(post8$both)*100,
+              PI(inv_logit(post9$b_Intercept))*100)
 
-Fig3<-ggarrange(plot6, plot7, nrow=2,ncol=1)
-Fig3
+fig3e_title<-c("Girls/Women","Boys/Men","Both Girls/Women\n & Boys/Men","Same\n Gender")
+
+fig3e_data<-as.data.frame(t(rbind(fig3e_title,fig3e_mean,fig3e_PI)))
+
+fig3e_data$fig3e_title<-factor(fig3e_data$fig3e_title,levels=c("Same\n Gender","Both Girls/Women\n & Boys/Men","Boys/Men","Girls/Women"))
+fig3e_data$fig3e_mean<-as.numeric(fig3e_data$fig3e_mean)
+fig3e_data$`5%`<-as.numeric(fig3e_data$`5%`)
+fig3e_data$`94%`<-as.numeric(fig3e_data$`94%`)
+
+fig3e<-ggplot(fig3e_data, aes(x = fig3e_title, y = fig3e_mean)) + geom_linerange(aes(x = fig3e_title,  ymin = `5%`, ymax = `94%`), lwd = 1, colour = gray(1/2))+ geom_point(aes(x = fig3e_title, y = fig3e_mean),size=3.5)   + scale_y_continuous(limits=c(0,100),breaks=c(0,25,50,75,100),labels=c("0%","25%","50%","75%","100%"))+coord_flip() + theme_bw(base_size=18)+theme(axis.title.y=element_blank())+labs(y="(E) Manufacturer Gender")
+
+fig3e
 
 ##############
 ###Learning###
 ##############
-##How many objects are embedded within teaching?
-sum(d$learn=="YES",na.rm=T) ##35
-
 ##Make dataset
 l<-subset(d,learn=="YES")
 
-##Number of societies
+nrow(l) ##35
 length(unique(l$Society)) ##16
 
 ##Recode mode & process
@@ -401,16 +449,90 @@ round((table(l$Mechanism)/nrow(l))*100)
 l$Pathway <- ordered(l$Pathway, levels = c("Vertical", "Horizontal", "Oblique","Unknown"))
 l$Mechanism<-ordered(l$Mechanism,levels=c("Teaching","Collaborative","Observation/Imitation","Unknown"))
 
+table(l$Pathway,l$Mechanism)
+
 ##Make Mosaic Plot
-plot7<-ggplot(data = l) +
-  geom_mosaic(aes(x = product(Pathway, Mechanism), fill=Pathway)) 
-plot7<-plot7+theme_classic()
-plot7<-plot7+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-plot7
+plot5<-ggplot(data = l) +
+  geom_mosaic(aes(x = product(Pathway, Mechanism), fill=Pathway),show.legend = FALSE) 
+plot5<-plot5+theme_classic()+scale_fill_grey()
+plot5<-plot5+ theme(axis.text.x = element_text(angle = 45, hjust=1))
+plot5
 
-#############
-###Table 3###
-#############
-table3<-bind_cols(t3a,t3b, t3c,t3d,t3e)
-write.csv(table3,"table3.csv")
+################
+###Figure 3C###
+###############
 
+
+fig3c_mean<-c(mean(1-inv_logit(post3$b_Intercept))*100,
+              mean(post4$b_muMini_Intercept)*100,
+              mean(post4$b_muChildOnly_Intercept)*100,
+              mean(post4$AdultVersion)*100,
+              mean(inv_logit(post5$b_Intercept))*100,
+              mean(1-inv_logit(post6$b_Intercept))*100)
+              
+              
+fig3c_PI<-cbind(PI(1-inv_logit(post3$b_Intercept))*100,
+              PI(post4$b_muMini_Intercept)*100,
+              PI(post4$b_muChildOnly_Intercept)*100,
+              PI(post4$AdultVersion)*100,
+              PI(inv_logit(post5$b_Intercept))*100,
+              PI(1-inv_logit(post6$b_Intercept))*100)
+
+fig3c_title<-c("Play","Miniatures","Child\n Only","Adult\n Versions","High\n Preservation","Composite")
+
+fig3c_data<-as.data.frame(t(rbind(fig3c_title,fig3c_mean,fig3c_PI)))
+
+fig3c_data$fig3c_title<-factor(fig3c_data$fig3c_title,levels=c("Composite","High\n Preservation","Adult\n Versions","Child\n Only","Miniatures","Play"))
+fig3c_data$fig3c_mean<-as.numeric(fig3c_data$fig3c_mean)
+fig3c_data$`5%`<-as.numeric(fig3c_data$`5%`)
+fig3c_data$`94%`<-as.numeric(fig3c_data$`94%`)
+
+fig3c<-ggplot(fig3c_data, aes(x = fig3c_title, y = fig3c_mean)) + geom_linerange(aes(x = fig3c_title,  ymin = `5%`, ymax = `94%`), lwd = 1, colour = gray(1/2))+ geom_point(aes(x = fig3c_title, y = fig3c_mean),size=3.5)   + scale_y_continuous(limits=c(0,100),breaks=c(0,25,50,75,100),labels=c("0%","25%","50%","75%","100%"))+coord_flip() + theme_bw(base_size=18)+theme(axis.title.y=element_blank())+labs(y="(C) Object Characteristics")
+
+fig3c
+
+#######################
+###Figure 3 composed###
+#######################
+
+col1<-ggarrange(fig3a,fig3b,ncol=1,align="v")
+col3<-ggarrange(fig3d,fig3e,ncol=1, align="v")
+
+ggarrange(col1,fig3c,col3,ncol=3) ##save 7 X 17"
+
+#########################
+###Supplementary Model###
+#########################
+
+sd<-d%>%group_by(randomNumber)%>%summarise(count=sum(count),ref=unique(ref),Society=unique(Society), Continent=unique(Continent),Pages=unique(Pages),Date=unique(Date))
+
+sd$Pages_z<-standardize(sd$Pages)
+sd$Date_z<-standardize(sd$Date)
+
+prior<-c(prior(normal(0,1),class=Intercept),prior(normal(0,1),class=b),prior(exponential(1),class=sd))
+
+SM1<-brm(count~Pages_z +Date_z +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),prior=prior,family=poisson(), data = sd, iter=10000, cores=4, control=list(adapt_delta=0.99))
+
+summary(SM1,prob=0.89)
+
+pp_check(SM1)
+
+figs1<-conditional_effects(SM1, effect="Date_z", prob=0.89)
+
+plot(figs1, plot=FALSE)[[1]]+ylab("Number of Objects")+xlab("Publication Year (z-score standardized)")
+
+
+###########################
+##Random effect estimates##
+###########################
+
+summary(M1, prob=0.89)
+summary(M2, prob=0.89)
+summary(M3, prob=0.89)
+summary(M4, prob=0.89)
+summary(M5, prob=0.89)
+summary(M6, prob=0.89)
+summary(M7, prob=0.89)
+summary(M8, prob=0.89)
+summary(M9, prob=0.89)
+summary(SM1, prob=0.89)
