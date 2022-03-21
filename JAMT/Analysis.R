@@ -118,10 +118,10 @@ post1$uknown<-0
 
 post1<-as.data.frame(softmax(post1))
 
-round(mean(post1$b_muBoys_Intercept),2)*100
-round(mean(post1$b_muGirls_Intercept),2)*100
-round(mean(post1$b_muBoth_Intercept),2)*100
-round(mean(post1$uknown),2)*100
+round(mean(post1$b_muBoys_Intercept),2)*100 ##40
+round(mean(post1$b_muGirls_Intercept),2)*100 ##13
+round(mean(post1$b_muBoth_Intercept),2)*100 ##11
+round(mean(post1$uknown),2)*100 ##36
 
 fig3a_mean<-c(mean(post1$b_muBoys_Intercept)*100,
                   mean(post1$b_muGirls_Intercept)*100,
@@ -163,9 +163,9 @@ post2$uknown<-0
 
 post2<-as.data.frame(softmax(post2))
 
-round(mean(post2$b_muApprox6years_Intercept),2)*100
-round(mean(post2$b_muApprox7years_Intercept),2)*100
-round(mean(post2$uknown),2)*100
+round(mean(post2$b_muApprox6years_Intercept),2)*100 ##10
+round(mean(post2$b_muApprox7years_Intercept),2)*100 ##16
+round(mean(post2$uknown),2)*100 ##74
 
 fig3b_mean<-c(mean(post2$b_muApprox6years_Intercept)*100,
               mean(post2$b_muApprox7years_Intercept)*100,
@@ -228,17 +228,21 @@ d_play<-subset(d,!is.na(Play))
 nrow(d_play) ##416 objects 
 length(unique(d_play$Society)) ##53 societies
 
+d_play$Play<-relevel(as.factor(d_play$Play), ref="Use")
+
 M3<-brm(Play~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_play, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post3<-posterior_samples(M3)
 
-round(mean(1-inv_logit(post3$b_Intercept)),2)*100
+round(mean(inv_logit(post3$b_Intercept)),2)*100 ##86
 
 ###########
 ###Scale###
 ###########
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muChildOnly"),prior(exponential(1),class=sd, dpar="muMini"))
+
+d$Scale<-relevel(as.factor(d$Scale), ref="AdultVersion")
 
 M4<-brm(Scale~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
@@ -249,9 +253,9 @@ post4$AdultVersion<-0
 
 post4<-as.data.frame(softmax(post4))
 
-round(mean(post4$b_muMini_Intercept),2)*100
-round(mean(post4$b_muChildOnly_Intercept),2)*100
-round(mean(post4$AdultVersion),2)*100
+round(mean(post4$b_muMini_Intercept),2)*100 ##53
+round(mean(post4$b_muChildOnly_Intercept),2)*100 ##35
+round(mean(post4$AdultVersion),2)*100 ##12
 
 ###################
 ###Raw materials###
@@ -287,6 +291,7 @@ pie(cm$value,labels=cm$Percent,col=grey.colors(length(cm$Percent)))
 ##################
 ###Preservation###
 ##################
+d_pres$PresLikelihood<-relevel(as.factor(d_pres$PresLikelihood), ref="High")
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
@@ -294,7 +299,7 @@ M5<-brm(PresLikelihood~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNum
 
 post5<-posterior_samples(M5)
 
-mean(inv_logit(post5$b_Intercept))
+round(mean(inv_logit(post5$b_Intercept)),2)*100 ##89
 
 ################
 ###Complexity###
@@ -304,11 +309,13 @@ d_comp<-subset(d, !is.na(simpleComp))
 nrow(d_comp) ##330
 length(unique(d_comp$Society)) ##all 54
 
+d_comp$simpleComp<-relevel(as.factor(d_comp$simpleComp), ref="Simple")
+
 M6<-brm(simpleComp~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_comp, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post6<-posterior_samples(M6)
-round(mean(1-inv_logit(post6$b_Intercept)),2)*100
 
+round(mean(inv_logit(post6$b_Intercept)),2)*100 ##57
 
 ######################
 ###Manufacturer Age###
@@ -321,6 +328,8 @@ length(unique(d_man_age$Society)) ##32
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muCHILD"),prior(exponential(1),class=sd, dpar="muBOTH"))
 
+d_man_age$manufacturerAge<-relevel(as.factor(d_man_age$manufacturerAge), ref="ADULT")
+
 M7<-brm(manufacturerAge~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(), prior=prior, data = d_man_age, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post7<-posterior_samples(M7)
@@ -330,9 +339,9 @@ post7$Adult<-0
 
 post7<-as.data.frame(softmax(post7))
 
-round(mean(post7$b_muCHILD_Intercept),2)*100
-round(mean(post7$b_muBOTH_Intercept),2)*100
-round(mean(post7$Adult),2)*100
+round(mean(post7$b_muCHILD_Intercept),2)*100 ##43
+round(mean(post7$b_muBOTH_Intercept),2)*100 ##16
+round(mean(post7$Adult),2)*100 ##41
 
 fig3d_mean<-c(mean(post7$b_muCHILD_Intercept)*100,
               mean(post7$b_muBOTH_Intercept)*100,
@@ -363,7 +372,10 @@ d_man_gen<-subset(d, !is.na(manufacturerSex))
 nrow(d_man_gen) ##98
 length(unique(d_man_gen$Society)) ##32
 
+
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muFEMALE"),prior(exponential(1),class=sd, dpar="muMALE"))
+
+d_man_gen$manufacturerSex<-relevel(as.factor(d_man_gen$manufacturerSex), ref="BOTH")
 
 M8<-brm(manufacturerSex~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(), prior=prior, data = d_man_gen, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
@@ -374,9 +386,9 @@ post8$both<-0
 
 post8<-as.data.frame(softmax(post8))
 
-round(mean(post8$b_muFEMALE_Intercept),2)*100
-round(mean(post8$b_muMALE_Intercept),2)*100
-round(mean(post8$both),2)*100
+round(mean(post8$b_muFEMALE_Intercept),2)*100 ##36
+round(mean(post8$b_muMALE_Intercept),2)*100 ##45
+round(mean(post8$both),2)*100 ##19
 
 #################
 ###Same Gender###
@@ -390,13 +402,15 @@ length(unique(omg$Society)) ##30 societies
 
 omg$sexmatch<-ifelse(omg$Gender=="Boys"&omg$manufacturerSex=="MALE","Same Gender",ifelse(omg$Gender=="Girls"&omg$manufacturerSex=="FEMALE","Same Gender",ifelse(omg$Gender=="Both"&omg$manufacturerSex=="BOTH","Same Gender","Opposite Gender")))
 
+omg$sexmatch<-relevel(as.factor(omg$sexmatch), ref="Opposite Gender")
+
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
 M9<-brm(sexmatch~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = omg, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post9<-posterior_samples(M9)
 
-round(mean(inv_logit(post9$b_Intercept)),2)*100
+round(mean(inv_logit(post9$b_Intercept)),2)*100 ##78
 
 
 fig3e_mean<-c(mean(post8$b_muFEMALE_Intercept)*100,
@@ -463,26 +477,26 @@ plot5
 ###############
 
 
-fig3c_mean<-c(mean(1-inv_logit(post3$b_Intercept))*100,
+fig3c_mean<-c(mean(inv_logit(post3$b_Intercept))*100,
               mean(post4$b_muMini_Intercept)*100,
               mean(post4$b_muChildOnly_Intercept)*100,
               mean(post4$AdultVersion)*100,
               mean(inv_logit(post5$b_Intercept))*100,
-              mean(1-inv_logit(post6$b_Intercept))*100)
+              mean(inv_logit(post6$b_Intercept))*100)
               
               
-fig3c_PI<-cbind(PI(1-inv_logit(post3$b_Intercept))*100,
+fig3c_PI<-cbind(PI(inv_logit(post3$b_Intercept))*100,
               PI(post4$b_muMini_Intercept)*100,
               PI(post4$b_muChildOnly_Intercept)*100,
               PI(post4$AdultVersion)*100,
               PI(inv_logit(post5$b_Intercept))*100,
-              PI(1-inv_logit(post6$b_Intercept))*100)
+              PI(inv_logit(post6$b_Intercept))*100)
 
-fig3c_title<-c("Play","Miniatures","Child\n Only","Adult\n Versions","High\n Preservation","Composite")
+fig3c_title<-c("Play","Miniatures","Child\n Only","Adult\n Versions","Low\n Preservation","Composite")
 
 fig3c_data<-as.data.frame(t(rbind(fig3c_title,fig3c_mean,fig3c_PI)))
 
-fig3c_data$fig3c_title<-factor(fig3c_data$fig3c_title,levels=c("Composite","High\n Preservation","Adult\n Versions","Child\n Only","Miniatures","Play"))
+fig3c_data$fig3c_title<-factor(fig3c_data$fig3c_title,levels=c("Composite","Low\n Preservation","Adult\n Versions","Child\n Only","Miniatures","Play"))
 fig3c_data$fig3c_mean<-as.numeric(fig3c_data$fig3c_mean)
 fig3c_data$`5%`<-as.numeric(fig3c_data$`5%`)
 fig3c_data$`94%`<-as.numeric(fig3c_data$`94%`)
