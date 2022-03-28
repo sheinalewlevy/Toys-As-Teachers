@@ -23,8 +23,8 @@ library(rel)
 ###Import data###
 #################
 
-d<-read.csv("Frontiers/data_complete.csv") 
-c<-read.csv("Frontiers/inter-coder.csv")
+d<-read.csv("data_complete.csv") 
+c<-read.csv("inter-coder.csv")
 names(c)[1] <- "randomNumber"
 
 ######################################
@@ -120,9 +120,9 @@ rm(t)
 ########################################
 ###Set Priors and make psign function###
 ########################################
-prior1<-c(prior(normal(0,1),class=b,nlpar=a), prior(normal(0,1),class=b,nlpar=b), prior(exponential(1),class=sd,nlpar=d))
+prior1<-c(prior(normal(0,1),class=b,nlpar=a), prior(normal(0,1),class=b,nlpar=b), prior(exponential(1),class=sd,nlpar=d), prior(normal(0,1), nlpar=e))
 
-prior2<-c(prior(normal(0,1),class=b,nlpar=a), prior(normal(0,1),class=b,nlpar=b),prior(normal(0,1),class=b,nlpar=c),  prior(exponential(1),class=sd,nlpar=d))
+prior2<-c(prior(normal(0,1),class=b,nlpar=a), prior(normal(0,1),class=b,nlpar=b),prior(normal(0,1),class=b,nlpar=c),  prior(exponential(1),class=sd,nlpar=d) , prior(normal(0,1), nlpar=e))
 
 prior3<-c(prior(normal(0,1),class=b), prior(exponential(1),class=sd))
 
@@ -150,7 +150,6 @@ dt<-subset(d,Play_vs_use!="Play")
 
 E1<-brm(play_cats~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=categorical(), data = d, cores=4, iter=5000 ,prior=prior5,control=list(adapt_delta=0.99) )
 
-
 E3<-brm(toycon~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=bernoulli(), data = dt, cores=4, prior=prior4, iter=5000 ,control=list(adapt_delta=0.99) )
 
 E4<-brm(simpleComp.recode ~ 1 + (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=bernoulli(), data = d, cores=4, prior=prior4, iter=5000 ,control=list(adapt_delta=0.99) )
@@ -161,42 +160,47 @@ E6<-brm(Social.recode ~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNu
 
 E7<-brm(scale.recode ~ 1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),family=bernoulli(), data = d, cores=4, prior=prior4, iter=5000 ,control=list(adapt_delta=0.99) )
 
-
 ######################
 ###Fit Index Models###
 ######################
 
 ##https://rsconnect.calvin.edu:3939/Rethinking2-ggformula/god-spiked-the-integers.html
 
-M1<-brm(bf(play.recode ~ a + b + d,
-           a ~ 0 + age.recode ,
+M1<-brm(bf(play.recode ~ e + a + b + d,
+           e ~ 1,
+            a ~ 0 + age.recode ,
            b ~ 0 + Gender,
            d ~ 0 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),
            nl=TRUE),family=bernoulli(), data = d, cores=4, prior=prior1, iter=5000 ,control=list(adapt_delta=0.99))
 
-M2<-brm(bf(simpleComp.recode ~ a + b + c  + d,
-           a ~ 0 + age.recode ,
+
+M2<-brm(bf(simpleComp.recode ~ e + a + b + c  + d,
+           e ~ 1,
+            a ~ 0 + age.recode ,
            b ~ 0 + Gender,
            c ~ 0 + play.iv,
            d ~ 0 + (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),
            nl=TRUE),family=bernoulli(), data = d, cores=4, prior=prior2, iter=5000 ,control=list(adapt_delta=0.99))
 
-M3<-brm(bf(risk.recode~ a + b + c  + d,
-           a ~ 0 + age.recode ,
+M3<-brm(bf(risk.recode~ e + a + b + c  + d,
+           e ~ 1,
+             a ~ 0 + age.recode ,
            b ~ 0 + Gender,
            c ~ 0 + play.iv,
            d ~ 0 + (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),
            nl=TRUE),family=bernoulli(), data = d, cores=4, prior=prior2, iter=5000 ,control=list(adapt_delta=0.99))
 
-M4<-brm(bf(Social.recode~ a + b + c  + d,
-           a ~ 0 + age.recode ,
+M4<-brm(bf(Social.recode~ e+ a + b + c  + d,
+           e ~ 1, 
+              a ~ 0 + age.recode ,
            b ~ 0 + Gender,
            c ~ 0 + play.iv,
            d ~ 0 + (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),
            nl=TRUE),family=bernoulli(), data = d, cores=4, prior=prior2, iter=5000 ,control=list(adapt_delta=0.99))
 
-M5<-brm(bf(scale.recode~ a + b + c  + d,
-           a ~ 0 + age.recode ,
+M5<-brm(bf(scale.recode~ e+ a + b + c  + d,
+           e ~ 1,
+               a ~ 0 + age.recode ,
            b ~ 0 + Gender,
            c ~ 0 + play.iv,
            d ~ 0 + (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),
@@ -235,8 +239,8 @@ round(median(post_E1$b_muMultiple_Intercept),2)
 round(median(inv_logit(post_E3$b_Intercept)),2)
 
 post1<-posterior_samples(M1)
-post1$prob_Older<-inv_logit(post1$b_a_age.recodeOlder)
-post1$prob_Younger<-inv_logit(post1$b_a_age.recodeYounger)
+post1$prob_Older<-inv_logit(post1$b_e_Intercept + post1$b_a_age.recodeOlder)
+post1$prob_Younger<-inv_logit(post1$b_e_Intercept + post1$b_a_age.recodeYounger)
 post1$prob_age_dif<-post1$prob_Older-post1$prob_Younger
 round(median(post1$prob_age_dif),2)
 round(PI(post1$prob_age_dif),2)
@@ -247,8 +251,8 @@ round(median(inv_logit(post_E4$b_Intercept)),2)
 
 post2<-posterior_samples(M2)
 
-post2$prob_Boys<-inv_logit(post2$b_b_GenderBoys)
-post2$prob_Girls<-inv_logit(post2$b_b_GenderGirls)
+post2$prob_Boys<-inv_logit(post2$b_e_Intercept + post2$b_b_GenderBoys)
+post2$prob_Girls<-inv_logit(post2$b_e_Intercept + post2$b_b_GenderGirls)
 post2$prob_gender_dif<-post2$prob_Boys-post2$prob_Girls
 round(median(post2$prob_gender_dif),2)
 
@@ -258,18 +262,18 @@ round(median(inv_logit(post_E5$b_Intercept)),2)
 
 post3<-posterior_samples(M3)
 
-post3$prob_Boys<-inv_logit(post3$b_b_GenderBoys)
-post3$prob_Girls<-inv_logit(post3$b_b_GenderGirls)
+post3$prob_Boys<-inv_logit(post3$b_e_Intercept + post3$b_b_GenderBoys)
+post3$prob_Girls<-inv_logit(post3$b_e_Intercept +post3$b_b_GenderGirls)
 post3$prob_gender_dif<-post3$prob_Boys-post3$prob_Girls
 round(median(post3$prob_gender_dif),2)
 
-post3$prob_Play<-inv_logit(post3$b_c_play.iv1)
-post3$prob_Instrument<-inv_logit(post3$b_c_play.iv0)
+post3$prob_Play<-inv_logit(post3$b_e_Intercept +post3$b_c_play.iv1)
+post3$prob_Instrument<-inv_logit(post3$b_e_Intercept +post3$b_c_play.iv0)
 post3$prob_activity_dif<-post3$prob_Play-post3$prob_Instrument
 round(median(post3$prob_activity_dif),2)
 
-post3$prob_Older<-inv_logit(post3$b_a_age.recodeOlder)
-post3$prob_Younger<-inv_logit(post3$b_a_age.recodeYounger)
+post3$prob_Older<-inv_logit(post3$b_e_Intercept +post3$b_a_age.recodeOlder)
+post3$prob_Younger<-inv_logit(post3$b_e_Intercept +post3$b_a_age.recodeYounger)
 post3$prob_age_dif<-post3$prob_Older-post3$prob_Younger
 round(median(post3$prob_age_dif),2)
 round(PI(post3$prob_age_dif),2)
@@ -280,8 +284,8 @@ round(median(inv_logit(post_E6$b_Intercept)),2)
 
 post4<-posterior_samples(M4)
 
-post4$prob_Play<-inv_logit(post4$b_c_play.iv1)
-post4$prob_Instrument<-inv_logit(post4$b_c_play.iv0)
+post4$prob_Play<-inv_logit(post4$b_e_Intercept + post4$b_c_play.iv1)
+post4$prob_Instrument<-inv_logit(post4$b_e_Intercept + post4$b_c_play.iv0)
 post4$prob_activity_dif<-post4$prob_Play-post4$prob_Instrument
 round(median(post4$prob_activity_dif),2)
 round(PI(post4$prob_activity_dif),2)
@@ -292,14 +296,14 @@ round(median(inv_logit(post_E7$b_Intercept)),2)
 
 post5<-posterior_samples(M5)
 
-post5$prob_Boys<-inv_logit(post5$b_b_GenderBoys)
-post5$prob_Girls<-inv_logit(post5$b_b_GenderGirls)
+post5$prob_Boys<-inv_logit(post5$b_e_Intercept + post5$b_b_GenderBoys)
+post5$prob_Girls<-inv_logit(post5$b_e_Intercept + post5$b_b_GenderGirls)
 post5$prob_gender_dif<-post5$prob_Boys-post3$prob_Girls
 round(median(post5$prob_gender_dif),2)
 
 
-post5$prob_Play<-inv_logit(post5$b_c_play.iv1)
-post5$prob_Instrument<-inv_logit(post5$b_c_play.iv0)
+post5$prob_Play<-inv_logit(post5$b_e_Intercept + post5$b_c_play.iv1)
+post5$prob_Instrument<-inv_logit(post5$b_e_Intercept + post5$b_c_play.iv0)
 post5$prob_activity_dif<-post5$prob_Play-post5$prob_Instrument
 round(median(post5$prob_activity_dif),2)
 
@@ -473,33 +477,33 @@ P0
 ###Make Probability Distribution Figure###
 ##########################################
 
-color_scheme_set("viridis")
-P1<-mcmc_plot(M1,prob=0.89,prob_outer=0.89,pars="^b_",type="areas",rhat=c(1.1,1.1,1.1,1.2,1.2,1.2))
-P1<-P1+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="6 Years and Under","b_a_age.recodeOlder"="7 Years and Over","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown"),
-                        limits=c("b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger"))
+color_scheme_set("gray")
+P1<-mcmc_plot(M1,prob=0.89,prob_outer=0.89,pars="^b_",type="areas")
+P1<-P1+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="Infancy & Early Childhood","b_a_age.recodeOlder"="Middle Childhood & Adolescence","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown", "b_e_Intercept"="Intercept"),
+                        limits=c("b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger","b_e_Intercept"))
 P1<-P1+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2))+labs(y="Activity", x="Instrumental Only vs Any Play") + theme_bw()+legend_none()
 P1
 
-P2<-mcmc_plot(M2,prob=0.89,prob_outer=0.89,pars="^b_",type="areas", rhat=c(1.1,1.1,1.1,1.2,1.2,1.2,1,1,1))
-P2<-P2+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="6 Years and Under","b_a_age.recodeOlder"="7 Years and Over","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity"),
-                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger"))
+P2<-mcmc_plot(M2,prob=0.89,prob_outer=0.89,pars="^b_",type="areas")
+P2<-P2+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="Infancy & Early Childhood","b_a_age.recodeOlder"="Middle Childhood & Adolescence","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity","b_e_Intercept"="Intercept"),
+                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger","b_e_Intercept"))
 P2<-P2+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2))+labs(y="Object Complexity",x="Simple vs Composite")+ theme_bw()+legend_none()
 P2
 
-P3<-mcmc_plot(M3,prob=0.89,prob_outer=0.89,pars="^b_",type="areas", rhat=c(1.1,1.1,1.1,1.2,1.2,1.2,1,1,1))
-P3<-P3+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="6 Years and Under","b_a_age.recodeOlder"="7 Years and Over","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity"),
-                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger"))
+P3<-mcmc_plot(M3,prob=0.89,prob_outer=0.89,pars="^b_",type="areas")
+P3<-P3+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="Infancy & Early Childhood","b_a_age.recodeOlder"="Middle Childhood & Adolescence","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity", "b_e_Intercept"="Intercept"),
+                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger","b_e_Intercept"))
 P3<-P3+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2))+labs(y="Associated Risk",x="Safe vs Risky")+ theme_bw()+legend_none()
 P3
 
-P4<-mcmc_plot(M4,prob=0.89,prob_outer=0.89,pars="^b_",type="areas", rhat=c(1.1,1.1,1.1,1.2,1.2,1.2,1,1,1))
-P4<-P4+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="6 Years and Under","b_a_age.recodeOlder"="7 Years and Over","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity"),
-                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger"))
+P4<-mcmc_plot(M4,prob=0.89,prob_outer=0.89,pars="^b_",type="areas")
+P4<-P4+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="Infancy & Early Childhood","b_a_age.recodeOlder"="Middle Childhood & Adolescence","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity", "b_e_Intercept"="Intercept"),
+                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger","b_e_Intercept"))
 P4<-P4+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2),labels=c("-2","0","2"))+labs(y="Context of Use",x="Solitary vs Social")+ theme_bw()+legend_none()
 P4
 
-P5<-mcmc_plot(M5,prob=0.89,prob_outer=0.89,pars="^b_",type="areas", rhat=c(1.1,1.1,1.1,1.2,1.2,1.2,1,1,1))
-P5<-P5+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="6 Years and Under","b_a_age.recodeOlder"="7 Years and Over","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity"),
-                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger"))
+P5<-mcmc_plot(M5,prob=0.89,prob_outer=0.89,pars="^b_",type="areas")
+P5<-P5+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="Infancy & Early Childhood","b_a_age.recodeOlder"="Middle Childhood & Adolescence","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity", "b_e_Intercept"="Intercept"),
+                        limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger","b_e_Intercept"))
 P5<-P5+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2),labels=c("-2","0","2"))+labs(y="Type",x="Child Only vs Adult")+ theme_bw()+legend_none()
 P5
