@@ -109,7 +109,7 @@ d$Gender<-relevel(as.factor(d$Gender), ref="Unknown")
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muGirls"),prior(exponential(1),class=sd, dpar="muBoys"), prior(exponential(1),class=sd, dpar="muBoth"))
 
-M1<-brm(Gender~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M1<-brm(Gender~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent) , family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post1<-posterior_samples(M1)
 
@@ -154,7 +154,7 @@ d$Age<-relevel(as.factor(d$Age), ref="Unknown")
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar="muApprox7years"),prior(exponential(1),class=sd, dpar="muApprox6years"))
 
-M2<-brm(Age~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M2<-brm(Age~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post2<-posterior_samples(M2)
 
@@ -191,6 +191,9 @@ fig3b
 ################################################
 ###Frequency and percent for each object type###
 ################################################
+##Recode types so that we have enough in each category
+d$Type_recode<-recode(d$Type,`Animal Figure`="Figures",`Human figure`="Figures",Instrument="Subsistence",`Tended facility`="Subsistence",`Untended facility`="Subsistence",Game="Games",PhysGame="Games")
+
 table(d$Type_recode)
 
 table(d$Type_recode,d$Gender)
@@ -198,8 +201,6 @@ table(d$Type_recode,d$Gender)
 ###################
 ###Make Table 3####
 ###################
-##Recode types so that we have enough in each category
-d$Type_recode<-recode(d$Type,`Animal Figure`="Figures",`Human figure`="Figures",Instrument="Subsistence",`Tended facility`="Subsistence",`Untended facility`="Subsistence",Game="Games",PhysGame="Games")
 
 t3a<-as.data.frame(table(d$Type_recode))
 
@@ -230,7 +231,7 @@ length(unique(d_play$Society)) ##53 societies
 
 d_play$Play<-relevel(as.factor(d_play$Play), ref="Use")
 
-M3<-brm(Play~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_play, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M3<-brm(Play~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=bernoulli(),prior=prior, data = d_play, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post3<-posterior_samples(M3)
 
@@ -244,7 +245,7 @@ prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar=
 
 d$Scale<-relevel(as.factor(d$Scale), ref="AdultVersion")
 
-M4<-brm(Scale~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M4<-brm(Scale~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=categorical(),prior=prior, data = d, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post4<-posterior_samples(M4)
 
@@ -253,8 +254,8 @@ post4$AdultVersion<-0
 
 post4<-as.data.frame(softmax(post4))
 
-round(mean(post4$b_muMini_Intercept),2)*100 ##53
-round(mean(post4$b_muChildOnly_Intercept),2)*100 ##35
+round(mean(post4$b_muMini_Intercept),2)*100 ##54
+round(mean(post4$b_muChildOnly_Intercept),2)*100 ##34
 round(mean(post4$AdultVersion),2)*100 ##12
 
 ###################
@@ -295,7 +296,7 @@ d_pres$PresLikelihood<-relevel(as.factor(d_pres$PresLikelihood), ref="High")
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
-M5<-brm(PresLikelihood~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_pres, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M5<-brm(PresLikelihood~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=bernoulli(),prior=prior, data = d_pres, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post5<-posterior_samples(M5)
 
@@ -311,7 +312,7 @@ length(unique(d_comp$Society)) ##all 54
 
 d_comp$simpleComp<-relevel(as.factor(d_comp$simpleComp), ref="Simple")
 
-M6<-brm(simpleComp~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = d_comp, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M6<-brm(simpleComp~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=bernoulli(),prior=prior, data = d_comp, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post6<-posterior_samples(M6)
 
@@ -330,7 +331,7 @@ prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar=
 
 d_man_age$manufacturerAge<-relevel(as.factor(d_man_age$manufacturerAge), ref="ADULT")
 
-M7<-brm(manufacturerAge~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(), prior=prior, data = d_man_age, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M7<-brm(manufacturerAge~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=categorical(), prior=prior, data = d_man_age, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post7<-posterior_samples(M7)
 
@@ -377,7 +378,7 @@ prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd, dpar=
 
 d_man_gen$manufacturerSex<-relevel(as.factor(d_man_gen$manufacturerSex), ref="BOTH")
 
-M8<-brm(manufacturerSex~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=categorical(), prior=prior, data = d_man_gen, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M8<-brm(manufacturerSex~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=categorical(), prior=prior, data = d_man_gen, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post8<-posterior_samples(M8)
 
@@ -406,7 +407,7 @@ omg$sexmatch<-relevel(as.factor(omg$sexmatch), ref="Opposite Gender")
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(exponential(1),class=sd))
 
-M9<-brm(sexmatch~1 +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber), family=bernoulli(),prior=prior, data = omg, iter=5000, cores=4, control=list(adapt_delta=0.99) )
+M9<-brm(sexmatch~1 + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent), family=bernoulli(),prior=prior, data = omg, iter=5000, cores=4, control=list(adapt_delta=0.99) )
 
 post9<-posterior_samples(M9)
 
@@ -525,7 +526,7 @@ sd$Date_z<-standardize(sd$Date)
 
 prior<-c(prior(normal(0,1),class=Intercept),prior(normal(0,1),class=b),prior(exponential(1),class=sd))
 
-SM1<-brm(count~Pages_z +Date_z +  (1| Continent) + (1|Society) + (1|ref)+ (1|randomNumber),prior=prior,family=poisson(), data = sd, iter=10000, cores=4, control=list(adapt_delta=0.99))
+SM1<-brm(count~Pages_z +Date_z + (1|randomNumber) + (1|ref)+ (1|Society) + (1| Continent),prior=prior,family=poisson(), data = sd, iter=10000, cores=4, control=list(adapt_delta=0.99))
 
 summary(SM1,prob=0.89)
 
