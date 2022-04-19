@@ -487,7 +487,7 @@ P1
 P2<-mcmc_plot(M2,prob=0.89,prob_outer=0.89,pars="^b_",type="areas")
 P2<-P2+scale_y_discrete(labels=c("b_a_age.recodeYounger" ="Infancy & Early Childhood","b_a_age.recodeOlder"="Middle Childhood & Adolescence","b_a_age.recodeUnknown"="Age Unknown","b_b_GenderGirls"="Girls","b_b_GenderBoys"="Boys","b_b_GenderBothDUnspecified"="Both/Unknown","b_c_play.iv0"="Instrumental Only","b_c_play.iv1"="Any Play","b_c_play.ivunknown"="Unknown Activity","b_e_Intercept"="Intercept"),
                         limits=c("b_c_play.ivunknown","b_c_play.iv0","b_c_play.iv1","b_b_GenderBothDUnspecified","b_b_GenderBoys","b_b_GenderGirls","b_a_age.recodeUnknown","b_a_age.recodeOlder","b_a_age.recodeYounger","b_e_Intercept"))
-P2<-P2+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2))+labs(y="Object Complexity",x="Simple vs Composite")+ theme_bw()+legend_none()
+P2<-P2+scale_x_continuous(limits=c(-3,3),breaks=c(-2,0,2))+labs(y="Complexity",x="Simple vs Composite")+ theme_bw()+legend_none()
 P2
 
 P3<-mcmc_plot(M3,prob=0.89,prob_outer=0.89,pars="^b_",type="areas")
